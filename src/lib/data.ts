@@ -1,16 +1,13 @@
 import { supabaseAdmin } from "./supabase";
 import type { Bagel, Rating } from "./supabase";
+import { runSync } from "./sync";
 
-/** Trigger a sync for the given week via internal API call */
+/** Sync week data directly — no HTTP self-call */
 export async function syncWeek(week: number) {
-  // VERCEL_URL is set automatically by Vercel; fallback to localhost for dev
-  const host =
-    process.env.NEXT_PUBLIC_APP_URL ??
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
   try {
-    await fetch(`${host}/api/sync/${week}`, { method: "POST" });
+    await runSync(week);
   } catch {
-    // sync failure is non-fatal — we still show whatever is in the DB
+    // non-fatal — show whatever is already in the DB
   }
 }
 

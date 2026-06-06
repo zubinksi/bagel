@@ -39,6 +39,14 @@ create table if not exists synced_weeks (
   primary key (week, season)
 );
 
+-- Player name cache — populated lazily after sync
+create table if not exists players (
+  player_id  text primary key,
+  name       text not null,
+  position   text,
+  team       text
+);
+
 -- Storage bucket for chug videos (run after creating the bucket named "bagel-videos")
 -- insert into storage.buckets (id, name, public) values ('bagel-videos', 'bagel-videos', false);
 
@@ -53,3 +61,4 @@ create policy "public read users"        on users        for select using (true)
 create policy "public read bagels"       on bagels       for select using (true);
 create policy "public read ratings"      on ratings      for select using (true);
 create policy "public read synced_weeks" on synced_weeks for select using (true);
+create policy "public read players"      on players      for select using (true);

@@ -26,11 +26,11 @@ export async function runSync(week: number) {
 
   if (existing && week < currentWeek) return { skipped: "already synced" };
 
-  const [leagueUsers, rosters, matchups, players] = await Promise.all([
+  // Fetch matchup and roster data — no player name lookup here (too slow)
+  const [leagueUsers, rosters, matchups] = await Promise.all([
     getLeagueUsers(),
     getLeagueRosters(),
     getMatchups(week),
-    getAllPlayers(),
   ]);
 
   const rosterOwner = new Map<number, string>();
@@ -44,6 +44,12 @@ export async function runSync(week: number) {
   }));
   await db.from("users").upsert(userRows, { onConflict: "sleeper_user_id" });
 
+  // Load player name cache from DB
+  const { data: cachedPlayers } = await db.from("players").select("player_id, name");
+  const nameCache = new Map<string, string>(
+    (cachedPlayers ?? []).map((p) => [p.player_id, p.name])
+  );
+
   const bagelRows: {
     week: number;
     season: string;
@@ -53,18 +59,14 @@ export async function runSync(week: number) {
     player_name: string;
   }[] = [];
 
+  // Use players_points map for reliable 0-score detection
   for (const matchup of matchups) {
     const ownerUserId = rosterOwner.get(matchup.roster_id);
     if (!ownerUserId) continue;
 
-    for (let i = 0; i < matchup.starters.length; i++) {
-      const playerId = matchup.starters[i];
-      const pts = matchup.starters_points?.[i] ?? 0;
+    for (const playerId of matchup.starters) {
+      const pts = matchup.players_points?.[playerId] ?? 0;
       if (pts !== 0) continue;
-
-      const p = players[playerId];
-      const playerName =
-        p?.full_name ?? (p ? `${p.first_name} ${p.last_name}` : playerId);
 
       bagelRows.push({
         week,
@@ -72,7 +74,7 @@ export async function runSync(week: number) {
         roster_id: matchup.roster_id,
         owner_user_id: ownerUserId,
         player_id: playerId,
-        player_name: playerName,
+        player_name: nameCache.get(playerId) ?? playerId, // use cached name or ID as fallback
       });
     }
   }
@@ -105,5 +107,46 @@ export async function runSync(week: number) {
     .from("synced_weeks")
     .upsert({ week, season, synced_at: new Date().toISOString() });
 
-  return { synced: bagelRows.length };
+  // After writing bagels, asynchronously try to enrich any player names we're missing
+  // This won't block the response and won't fail the sync if it times out
+  const missingIds = bagelRows
+    .filter((b) => !nameCache.has(b.player_id))
+    .map((b) => b.player_id);
+
+  if (missingIds.length > 0) {
+    enrichPlayerNames(missingIds, db).catch(() => {});
+  }
+
+  return { synced: bagelRows.length, matchups: matchups.length };
+}
+
+/** Fetch the full players list and cache names for the given IDs in Supabase */
+async function enrichPlayerNames(
+  playerIds: string[],
+  db: ReturnType<typeof supabaseAdmin>
+) {
+  const allPlayers = await getAllPlayers();
+  const rows = playerIds
+    .filter((id) => allPlayers[id])
+    .map((id) => {
+      const p = allPlayers[id];
+      return {
+        player_id: id,
+        name: p.full_name ?? `${p.first_name} ${p.last_name}`,
+        position: p.position ?? null,
+        team: p.team ?? null,
+      };
+    });
+
+  if (rows.length > 0) {
+    await db.from("players").upsert(rows, { onConflict: "player_id" });
+    // Update the bagels rows that had the player_id as a placeholder name
+    for (const row of rows) {
+      await db
+        .from("bagels")
+        .update({ player_name: row.name })
+        .eq("player_id", row.player_id)
+        .eq("player_name", row.player_id); // only update if still using ID as name
+    }
+  }
 }

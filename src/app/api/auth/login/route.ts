@@ -29,20 +29,23 @@ export async function POST(req: NextRequest) {
 
   // Upsert into our users table
   const db = supabaseAdmin();
+  const resolvedUsername =
+    sleeperUser.username ?? sleeperUser.display_name ?? sleeperUser.user_id;
+
   await db.from("users").upsert(
     {
       sleeper_user_id: sleeperUser.user_id,
-      username: sleeperUser.username,
-      display_name: sleeperUser.display_name,
-      avatar: sleeperUser.avatar,
+      username: resolvedUsername,
+      display_name: sleeperUser.display_name ?? null,
+      avatar: sleeperUser.avatar ?? null,
     },
     { onConflict: "sleeper_user_id" }
   );
 
   await createSession({
     sleeper_user_id: sleeperUser.user_id,
-    username: sleeperUser.username,
-    display_name: sleeperUser.display_name,
+    username: resolvedUsername,
+    display_name: sleeperUser.display_name ?? null,
   });
 
   return NextResponse.json({ ok: true });

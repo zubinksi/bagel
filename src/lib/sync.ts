@@ -38,8 +38,8 @@ export async function runSync(week: number) {
 
   const userRows = leagueUsers.map((u) => ({
     sleeper_user_id: u.user_id,
-    username: u.username,
-    display_name: u.display_name,
+    username: u.username ?? u.display_name ?? u.user_id,
+    display_name: u.display_name ?? null,
     avatar: u.avatar ?? null,
   }));
   await db.from("users").upsert(userRows, { onConflict: "sleeper_user_id" });

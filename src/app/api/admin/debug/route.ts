@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getLeague, getLeagueUsers, getLeagueRosters, getMatchups } from "@/lib/sleeper";
 import { supabaseAdmin } from "@/lib/supabase";
-import { runSync } from "@/lib/sync";
 import { getSession } from "@/lib/auth";
 
 export async function GET(req: NextRequest) {
@@ -20,12 +19,13 @@ export async function GET(req: NextRequest) {
     ]);
 
     const db = supabaseAdmin();
-    const { data: syncedWeeks } = await db.from("synced_weeks").select("*").order("week");
-    const { data: bagels } = await db
+    const { data: syncedWeeks, error: syncedWeeksError } = await db.from("synced_weeks").select("*").order("week");
+    const { data: bagels, error: bagelsError } = await db
       .from("bagels")
       .select("week, season, player_id, player_name, owner_user_id")
       .eq("season", league.season)
       .order("week");
+    const { data: dbUsers, error: usersError } = await db.from("users").select("sleeper_user_id, username");
 
     // Show score breakdown for requested week
     const rosterOwner = new Map(rosters.map((r) => [r.roster_id, r.owner_id]));
@@ -44,8 +44,14 @@ export async function GET(req: NextRequest) {
       queryWeek: week,
       matchupCount: matchups.length,
       scoreBreakdown,
+      dbErrors: {
+        syncedWeeks: syncedWeeksError?.message ?? null,
+        bagels: bagelsError?.message ?? null,
+        users: usersError?.message ?? null,
+      },
       syncedWeeks,
       bagelsInDb: bagels,
+      usersInDb: dbUsers,
     });
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });
@@ -57,10 +63,57 @@ export async function POST(req: NextRequest) {
   if (!session) return NextResponse.json({ error: "Not logged in" }, { status: 401 });
 
   const { week } = await req.json();
+  const db = supabaseAdmin();
+  const league = await getLeague();
+  const season = league.season;
+
+  // Run each step manually so we can see exactly which step fails
+  const steps: Record<string, unknown> = {};
+
   try {
-    const result = await runSync(week);
-    return NextResponse.json({ ok: true, result });
+    const [leagueUsers, rosters, matchups] = await Promise.all([
+      getLeagueUsers(),
+      getLeagueRosters(),
+      getMatchups(week),
+    ]);
+    steps.fetchedFromSleeper = { users: leagueUsers.length, rosters: rosters.length, matchups: matchups.length };
+
+    const rosterOwner = new Map(rosters.map((r) => [r.roster_id, r.owner_id]));
+
+    const userRows = leagueUsers.map((u) => ({
+      sleeper_user_id: u.user_id,
+      username: u.username,
+      display_name: u.display_name,
+      avatar: u.avatar ?? null,
+    }));
+    const { error: userUpsertError } = await db.from("users").upsert(userRows, { onConflict: "sleeper_user_id" });
+    steps.userUpsert = userUpsertError ? { error: userUpsertError.message, code: userUpsertError.code } : "ok";
+
+    const { data: cachedPlayers } = await db.from("players").select("player_id, name");
+    const nameCache = new Map((cachedPlayers ?? []).map((p: {player_id: string; name: string}) => [p.player_id, p.name]));
+
+    const bagelRows: { week: number; season: string; roster_id: number; owner_user_id: string; player_id: string; player_name: string }[] = [];
+    for (const matchup of matchups) {
+      const ownerUserId = rosterOwner.get(matchup.roster_id);
+      if (!ownerUserId) continue;
+      for (const playerId of matchup.starters) {
+        const pts = matchup.players_points?.[playerId] ?? 0;
+        if (pts !== 0) continue;
+        bagelRows.push({ week, season, roster_id: matchup.roster_id, owner_user_id: ownerUserId, player_id: playerId, player_name: nameCache.get(playerId) ?? playerId });
+      }
+    }
+    steps.bagelsDetected = bagelRows;
+
+    if (bagelRows.length > 0) {
+      const { error: bagelUpsertError } = await db.from("bagels").upsert(bagelRows, { onConflict: "week,season,roster_id,player_id" });
+      steps.bagelUpsert = bagelUpsertError ? { error: bagelUpsertError.message, code: bagelUpsertError.code } : "ok";
+    }
+
+    const { error: weekUpsertError } = await db.from("synced_weeks").upsert({ week, season, synced_at: new Date().toISOString() });
+    steps.weekUpsert = weekUpsertError ? { error: weekUpsertError.message, code: weekUpsertError.code } : "ok";
+
+    return NextResponse.json({ steps });
   } catch (err) {
-    return NextResponse.json({ error: String(err) }, { status: 500 });
+    return NextResponse.json({ steps, fatalError: String(err) }, { status: 500 });
   }
 }

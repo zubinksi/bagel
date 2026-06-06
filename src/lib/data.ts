@@ -3,9 +3,12 @@ import type { Bagel, Rating } from "./supabase";
 
 /** Trigger a sync for the given week via internal API call */
 export async function syncWeek(week: number) {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  // VERCEL_URL is set automatically by Vercel; fallback to localhost for dev
+  const host =
+    process.env.NEXT_PUBLIC_APP_URL ??
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
   try {
-    await fetch(`${baseUrl}/api/sync/${week}`, { method: "POST" });
+    await fetch(`${host}/api/sync/${week}`, { method: "POST" });
   } catch {
     // sync failure is non-fatal — we still show whatever is in the DB
   }

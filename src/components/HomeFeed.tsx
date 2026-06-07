@@ -24,6 +24,7 @@ export default function HomeFeed({ initialWeek, season }: { initialWeek: number;
   const [standings, setStandings] = useState<StandingsRow[]>([]);
   const [session, setSession] = useState<SessionUser | null>(null);
   const [loadingBagels, setLoadingBagels] = useState(true);
+  const [expandedBagelId, setExpandedBagelId] = useState<string | null>(null);
   const weekScrollRef = useRef<HTMLDivElement>(null);
 
   // Load everything on mount
@@ -42,6 +43,7 @@ export default function HomeFeed({ initialWeek, season }: { initialWeek: number;
   // Load bagels when week changes
   useEffect(() => {
     setLoadingBagels(true);
+    setExpandedBagelId(null);
     fetch(`/api/bagels?week=${selectedWeek}`)
       .then((r) => r.json())
       .then((data) => {
@@ -134,7 +136,14 @@ export default function HomeFeed({ initialWeek, season }: { initialWeek: number;
         ) : (
           <div className="space-y-2">
             {bagels.map((bagel) => (
-              <BagelFeedCard key={bagel.id} bagel={bagel} />
+              <BagelFeedCard
+                key={bagel.id}
+                bagel={bagel}
+                isExpanded={expandedBagelId === bagel.id}
+                onToggle={() => setExpandedBagelId(prev => prev === bagel.id ? null : bagel.id)}
+                isOwner={session?.sleeper_user_id === bagel.owner_user_id}
+                isLoggedIn={!!session}
+              />
             ))}
           </div>
         )}

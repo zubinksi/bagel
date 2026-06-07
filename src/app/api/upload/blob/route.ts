@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase";
 
+
 export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -41,15 +42,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           tokenPayload: JSON.stringify({ bagelId }),
         };
       },
-      onUploadCompleted: async ({ blob, tokenPayload }) => {
-        const { bagelId } = JSON.parse(tokenPayload ?? "{}");
-        if (!bagelId) return;
-        const db = supabaseAdmin();
-        await db
-          .from("bagels")
-          .update({ video_url: blob.url, video_path: blob.pathname })
-          .eq("id", bagelId);
-      },
+      // No onUploadCompleted — client calls /api/upload/complete directly after upload()
+      // resolves. Keeping this callback caused the client to hang: Vercel calls back to
+      // this endpoint after the upload, and if Supabase is slow the 10s Hobby timeout
+      // fires, Vercel retries, and upload() never resolves on the client.
     });
 
     return NextResponse.json(jsonResponse);

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 export default function LoginPage() {
   const [username, setUsername] = useState("");
@@ -13,73 +14,73 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
     setError(null);
-
     const res = await fetch("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username: username.trim() }),
     });
-
     setLoading(false);
-
     if (!res.ok) {
       const j = await res.json();
       setError(j.error ?? "Login failed");
       return;
     }
-
     router.push("/");
     router.refresh();
   }
 
   return (
-    <div className="min-h-[60vh] flex items-center justify-center">
-      <div className="w-full max-w-sm space-y-6">
-        <div className="text-center space-y-1">
-          <div className="text-5xl">🥯</div>
-          <h1 className="text-2xl font-black">Sign in to Bagel Board</h1>
-          <p className="text-zinc-400 text-sm">
-            Enter your Sleeper username to claim your identity
-          </p>
+    <div className="min-h-screen flex flex-col px-6 py-12">
+      {/* Back */}
+      <Link href="/" className="text-zinc-500 text-sm mb-8 flex items-center gap-1">
+        ← Back
+      </Link>
+
+      {/* Zero badge */}
+      <div className="flex justify-center mb-6">
+        <div className="w-16 h-16 rounded-full border-4 border-yellow-400 flex items-center justify-center">
+          <span className="font-display text-3xl text-yellow-400 leading-none">0</span>
+        </div>
+      </div>
+
+      <h1 className="font-display text-5xl text-center text-white mb-2">SIGN IN</h1>
+      <p className="text-center text-zinc-400 text-sm mb-10">Enter your Sleeper username to claim your identity</p>
+
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label className="block text-zinc-400 text-xs uppercase tracking-widest mb-2">
+            Sleeper Username
+          </label>
+          <input
+            type="text"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            placeholder="your_username"
+            autoCapitalize="off"
+            autoCorrect="off"
+            className="w-full bg-[#111113] border border-zinc-700 rounded-xl px-5 py-4 text-white text-lg placeholder-zinc-600 focus:outline-none focus:border-yellow-500 transition"
+          />
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-zinc-300 mb-1.5">
-              Sleeper Username
-            </label>
-            <input
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="your_sleeper_username"
-              autoComplete="off"
-              autoCapitalize="off"
-              className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-3 text-white placeholder-zinc-500 focus:outline-none focus:border-green-500 transition"
-            />
+        {error && (
+          <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 text-sm text-red-400">
+            {error}
           </div>
+        )}
 
-          {error && (
-            <div className="bg-red-900/40 border border-red-700 rounded-lg px-4 py-3 text-sm text-red-300">
-              {error}
-            </div>
-          )}
+        <button
+          type="submit"
+          disabled={loading || !username.trim()}
+          className="w-full bg-yellow-400 hover:bg-yellow-300 disabled:opacity-40 disabled:cursor-not-allowed text-black font-display text-2xl tracking-wider py-5 rounded-xl transition"
+        >
+          {loading ? "CHECKING..." : "SIGN IN WITH SLEEPER"}
+        </button>
+      </form>
 
-          <button
-            type="submit"
-            disabled={loading || !username.trim()}
-            className="w-full bg-green-600 hover:bg-green-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-lg transition"
-          >
-            {loading ? "Checking..." : "Sign In"}
-          </button>
-        </form>
-
-        <p className="text-center text-xs text-zinc-500">
-          You must be a member of the league to sign in.
-          <br />
-          Signing in links your Sleeper account — no password needed.
-        </p>
-      </div>
+      <p className="text-center text-zinc-600 text-xs mt-8">
+        You must be a member of the league to sign in.<br />
+        No password — your Sleeper account is your identity.
+      </p>
     </div>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { upload } from "@vercel/blob/client";
 
 type Props = {
   bagelId: string;
@@ -44,51 +45,26 @@ export default function VideoUploadZone({ bagelId, existingVideoUrl }: Props) {
     try {
       setStage("uploading");
       const ext = file.name.split(".").pop() ?? "mp4";
+      const pathname = `bagels/${bagelId}-${Date.now()}.${ext}`;
 
-      // Step 1: Get a client upload token from our server
-      const tokenRes = await fetch("/api/upload/token", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bagel_id: bagelId, file_ext: ext }),
-      });
-      if (!tokenRes.ok) {
-        const j = await tokenRes.json().catch(() => ({}));
-        throw new Error(j.error ?? `Token error ${tokenRes.status}`);
-      }
-      const { clientToken, pathname } = await tokenRes.json();
-
-      // Step 2: Upload directly to Vercel Blob via fetch (avoids iOS XHR onerror bug)
-      // Token format: vercel_blob_client_<storeId>_<base64payload>
-      const storeId = clientToken.split("_")[3] ?? "";
-      const uploadUrl = `https://vercel.com/api/blob/?pathname=${encodeURIComponent(pathname)}`;
-
-      const uploadRes = await fetch(uploadUrl, {
-        method: "PUT",
-        headers: {
-          "Authorization": `Bearer ${clientToken}`,
-          "x-vercel-blob-access": "public",
-          "x-api-version": "12",
-          "x-vercel-blob-store-id": storeId,
-        },
-        body: file,
+      // multipart: true splits the file into 8MB chunks — required for large files on iOS.
+      // handleUploadUrl generates the token; our route returns {ok:true} for blob.upload-completed
+      // immediately so there's no completion-callback hang.
+      const blob = await upload(pathname, file, {
+        access: "public",
+        handleUploadUrl: "/api/upload/blob",
+        clientPayload: bagelId,
+        multipart: true,
       });
 
-      if (!uploadRes.ok) {
-        const text = await uploadRes.text().catch(() => "");
-        throw new Error(`Upload failed (${uploadRes.status}): ${text.slice(0, 200)}`);
-      }
-
-      const blobResult: { url: string } = await uploadRes.json();
-
-      // Step 3: Save the URL to DB
       setStage("saving");
       await fetch("/api/upload/complete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bagel_id: bagelId, video_url: blobResult.url }),
+        body: JSON.stringify({ bagel_id: bagelId, video_url: blob.url }),
       });
 
-      setVideoUrl(blobResult.url);
+      setVideoUrl(blob.url);
       setProgress(100);
       setTimeout(() => window.location.reload(), 300);
     } catch (err) {
@@ -142,7 +118,7 @@ export default function VideoUploadZone({ bagelId, existingVideoUrl }: Props) {
               <p className="font-display text-xl text-white tracking-wide">UPLOADING...</p>
               <div className="mt-3 w-full max-w-[200px] mx-auto h-1.5 bg-zinc-700 rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-yellow-400 rounded-full transition-all duration-400"
+                  className="h-full bg-yellow-400 rounded-full transition-all duration-500"
                   style={{ width: `${progress}%` }}
                 />
               </div>

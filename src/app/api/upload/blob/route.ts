@@ -6,7 +6,14 @@ import { supabaseAdmin } from "@/lib/supabase";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  // Surface missing env var immediately so it shows in Vercel logs
+  if (!process.env.BLOB_READ_WRITE_TOKEN) {
+    console.error("[upload/blob] BLOB_READ_WRITE_TOKEN is not set");
+    return NextResponse.json({ error: "Blob storage not configured (missing BLOB_READ_WRITE_TOKEN)" }, { status: 500 });
+  }
+
   const body = (await request.json()) as HandleUploadBody;
+  console.log("[upload/blob] request type:", (body as any).type);
 
   try {
     const jsonResponse = await handleUpload({
@@ -47,6 +54,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     return NextResponse.json(jsonResponse);
   } catch (error) {
+    console.error("[upload/blob] error:", (error as Error).message);
     return NextResponse.json({ error: (error as Error).message }, { status: 400 });
   }
 }

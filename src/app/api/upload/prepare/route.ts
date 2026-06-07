@@ -27,6 +27,9 @@ export async function POST(req: NextRequest) {
     await db.storage.from(BUCKET).remove([bagel.video_path]);
   }
 
+  // Ensure the bucket exists (creates it if not, ignores error if it already does)
+  await db.storage.createBucket(BUCKET, { public: false }).catch(() => {});
+
   const ext = file_ext ?? "mp4";
   const path = `${session.sleeper_user_id}/${bagel_id}.${ext}`;
 

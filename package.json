@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.107.0",
+    "@vercel/blob": "^2.4.0",
     "iron-session": "^8.0.4",
     "jose": "^6.2.3",
     "next": "16.2.7",

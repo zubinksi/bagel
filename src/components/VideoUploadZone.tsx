@@ -1,23 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { createBrowserClient } from "@/lib/supabase-browser";
-
-const BUCKET = "bagel-videos";
+import { useRef, useState } from "react";
+import { upload } from "@vercel/blob/client";
 
 type Props = {
   bagelId: string;
   existingVideoUrl: string | null;
 };
 
-type Stage = "idle" | "preparing" | "uploading" | "saving";
-
-const LABEL: Record<Stage, string> = {
-  idle: "RECORD OR UPLOAD YOUR CHUG",
-  preparing: "PREPARING...",
-  uploading: "UPLOADING...",
-  saving: "SAVING...",
-};
+type Stage = "idle" | "uploading" | "saving";
 
 export default function VideoUploadZone({ bagelId, existingVideoUrl }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -25,25 +16,6 @@ export default function VideoUploadZone({ bagelId, existingVideoUrl }: Props) {
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [videoUrl, setVideoUrl] = useState(existingVideoUrl);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  // Animate a fake progress bar while uploading (real progress not available via SDK)
-  useEffect(() => {
-    if (stage === "uploading") {
-      setProgress(5);
-      timerRef.current = setInterval(() => {
-        setProgress((p) => {
-          if (p >= 90) { clearInterval(timerRef.current!); return p; }
-          return p + Math.random() * 8;
-        });
-      }, 600);
-    } else {
-      if (timerRef.current) clearInterval(timerRef.current);
-      if (stage === "saving") setProgress(95);
-      if (stage === "idle") setProgress(0);
-    }
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [stage]);
 
   async function handleFile(file: File) {
     if (!file.type.startsWith("video/")) {
@@ -51,43 +23,28 @@ export default function VideoUploadZone({ bagelId, existingVideoUrl }: Props) {
       return;
     }
     setError(null);
+    setProgress(0);
 
     try {
-      // Step 1: Ask the server for a signed upload URL
-      setStage("preparing");
-      const ext = file.name.split(".").pop() ?? "mp4";
-      const prepRes = await fetch("/api/upload/prepare", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bagel_id: bagelId, file_ext: ext }),
-      });
-      if (!prepRes.ok) {
-        const j = await prepRes.json().catch(() => ({}));
-        throw new Error(j.error ?? `Server error ${prepRes.status}`);
-      }
-      const { token, path } = await prepRes.json();
-
-      // Step 2: Upload directly from browser to Supabase Storage (no Vercel size limit)
+      // Upload directly from browser to Vercel Blob (500MB limit, real progress)
       setStage("uploading");
-      const supabase = createBrowserClient();
-      const { error: uploadError } = await supabase.storage
-        .from(BUCKET)
-        .uploadToSignedUrl(path, token, file, { upsert: true });
-      if (uploadError) throw new Error(uploadError.message);
+      const ext = file.name.split(".").pop() ?? "mp4";
+      const blob = await upload(`bagels/${bagelId}-${Date.now()}.${ext}`, file, {
+        access: "public",
+        handleUploadUrl: "/api/upload/blob",
+        clientPayload: bagelId,
+        onUploadProgress: ({ percentage }) => setProgress(Math.round(percentage)),
+      });
 
-      // Step 3: Tell the server to persist the path and get a long-lived download URL
+      // Belt-and-suspenders: save URL to DB (onUploadCompleted also does this server-side)
       setStage("saving");
-      const completeRes = await fetch("/api/upload/complete", {
+      await fetch("/api/upload/complete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bagel_id: bagelId, path }),
+        body: JSON.stringify({ bagel_id: bagelId, video_url: blob.url }),
       });
-      if (!completeRes.ok) {
-        const j = await completeRes.json().catch(() => ({}));
-        throw new Error(j.error ?? `Save error ${completeRes.status}`);
-      }
-      const { video_url } = await completeRes.json();
-      setVideoUrl(video_url);
+
+      setVideoUrl(blob.url);
       setProgress(100);
       setTimeout(() => window.location.reload(), 300);
     } catch (err) {
@@ -136,16 +93,23 @@ export default function VideoUploadZone({ bagelId, existingVideoUrl }: Props) {
           {busy ? "⏳" : "📷"}
         </div>
         <div className="text-center w-full">
-          <p className="font-display text-xl text-white tracking-wide">{LABEL[stage]}</p>
-          {busy && progress > 0 ? (
-            <div className="mt-3 w-full max-w-[200px] mx-auto h-1 bg-zinc-700 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-yellow-400 rounded-full transition-all duration-500"
-                style={{ width: `${Math.min(progress, 100)}%` }}
-              />
-            </div>
+          {stage === "uploading" ? (
+            <>
+              <p className="font-display text-xl text-white tracking-wide">UPLOADING... {progress}%</p>
+              <div className="mt-3 w-full max-w-[200px] mx-auto h-1.5 bg-zinc-700 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-yellow-400 rounded-full transition-all duration-200"
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+            </>
+          ) : stage === "saving" ? (
+            <p className="font-display text-xl text-white tracking-wide">SAVING...</p>
           ) : (
-            <p className="text-zinc-500 text-xs mt-1">MP4 / MOV · the shakier the better</p>
+            <>
+              <p className="font-display text-xl text-white tracking-wide">RECORD OR UPLOAD YOUR CHUG</p>
+              <p className="text-zinc-500 text-xs mt-1">MP4 / MOV · up to 500MB · the shakier the better</p>
+            </>
           )}
         </div>
       </button>

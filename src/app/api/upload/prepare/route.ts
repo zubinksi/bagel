@@ -38,5 +38,5 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: error?.message ?? "Failed to create upload URL" }, { status: 500 });
   }
 
-  return NextResponse.json({ signed_url: data.signedUrl, path });
+  return NextResponse.json({ signed_url: data.signedUrl, token: data.token, path });
 }

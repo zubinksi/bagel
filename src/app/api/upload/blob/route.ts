@@ -42,10 +42,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           tokenPayload: JSON.stringify({ bagelId }),
         };
       },
-      // No onUploadCompleted — client calls /api/upload/complete directly after upload()
-      // resolves. Keeping this callback caused the client to hang: Vercel calls back to
-      // this endpoint after the upload, and if Supabase is slow the 10s Hobby timeout
-      // fires, Vercel retries, and upload() never resolves on the client.
+      // No-op: handleUpload needs this handler to return a success response when Vercel
+      // sends the completion ping, otherwise upload() hangs on the client. The actual
+      // DB save happens via /api/upload/complete called directly from the client.
+      onUploadCompleted: async () => {},
     });
 
     return NextResponse.json(jsonResponse);

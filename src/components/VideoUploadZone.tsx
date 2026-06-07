@@ -9,6 +9,11 @@ type Props = {
 
 type Stage = "idle" | "uploading" | "saving";
 
+// 5 MB per chunk — same-origin fetch on iOS has no cross-origin issues,
+// and 5 MB stays comfortably below Vercel's per-request body limit while
+// matching the minimum part size for S3/R2-backed multipart uploads.
+const CHUNK_SIZE = 5 * 1024 * 1024;
+
 export default function VideoUploadZone({ bagelId, existingVideoUrl }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [stage, setStage] = useState<Stage>("idle");
@@ -23,100 +28,63 @@ export default function VideoUploadZone({ bagelId, existingVideoUrl }: Props) {
     }
     setError(null);
     setProgress(0);
+    setStage("uploading");
 
     try {
-      setStage("uploading");
       const ext = file.name.split(".").pop() ?? "mp4";
+      const contentType = file.type || "video/mp4";
 
-      // Get a client upload token + the predictable blob URL (addRandomSuffix:false)
-      const tokenRes = await fetch("/api/upload/token", {
+      // Step 1: create multipart upload session on the server
+      const initRes = await fetch("/api/upload/mpu-create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bagel_id: bagelId, file_ext: ext }),
+        body: JSON.stringify({ bagel_id: bagelId, file_ext: ext, content_type: contentType }),
       });
-      if (!tokenRes.ok) {
-        const j = await tokenRes.json().catch(() => ({}));
-        throw new Error(j.error ?? `Token error ${tokenRes.status}`);
+      if (!initRes.ok) {
+        const j = await initRes.json().catch(() => ({}));
+        throw new Error(j.error ?? `Init error ${initRes.status}`);
       }
-      const { clientToken, pathname, blobUrl } = await tokenRes.json();
+      const { uploadId, key, pathname } = await initRes.json();
 
-      // XHR gives real upload progress. iOS Safari fires onerror on the *response*
-      // even when the server has received every byte — the upload itself succeeds.
-      // In that case we fall back to the pre-computed blobUrl instead of the response.
-      const storeId = clientToken.split("_")[3] ?? "";
-      const uploadUrl = `https://vercel.com/api/blob/?pathname=${encodeURIComponent(pathname)}`;
+      // Step 2: upload file in chunks via same-origin POST (no cross-origin iOS issues)
+      const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+      const parts: { partNumber: number; etag: string }[] = [];
 
-      const finalUrl = await new Promise<string>((resolve, reject) => {
-        let bytesSent = 0;
-        const xhr = new XMLHttpRequest();
-        xhr.open("PUT", uploadUrl, true);
-        xhr.setRequestHeader("Authorization", `Bearer ${clientToken}`);
-        xhr.setRequestHeader("x-vercel-blob-access", "public");
-        xhr.setRequestHeader("x-api-version", "12");
-        xhr.setRequestHeader("x-vercel-blob-store-id", storeId);
+      for (let i = 0; i < totalChunks; i++) {
+        const start = i * CHUNK_SIZE;
+        const chunk = file.slice(start, start + CHUNK_SIZE);
+        const partNumber = i + 1;
 
-        xhr.upload.addEventListener("progress", (e) => {
-          if (e.lengthComputable) {
-            bytesSent = e.loaded;
-            setProgress(Math.min(99, Math.round((e.loaded / e.total) * 99)));
-          }
+        const params = new URLSearchParams({ uploadId, key, pathname, partNumber: String(partNumber) });
+        const partRes = await fetch(`/api/upload/mpu-part?${params}`, {
+          method: "POST",
+          body: chunk,
+          headers: { "Content-Type": "application/octet-stream" },
         });
-
-        xhr.onload = () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            try {
-              resolve((JSON.parse(xhr.responseText) as { url: string }).url);
-            } catch {
-              resolve(blobUrl); // parse failed but upload succeeded
-            }
-          } else {
-            reject(new Error(`Upload failed (${xhr.status}): ${xhr.responseText.slice(0, 200)}`));
-          }
-        };
-
-        xhr.onerror = () => {
-          // iOS Safari triggers onerror on the response even after all bytes are sent.
-          // If ≥99% was sent, the blob is already stored — use the pre-computed URL.
-          if (bytesSent >= file.size * 0.99) {
-            resolve(blobUrl);
-          } else {
-            reject(new Error("Upload failed — check your connection and try again"));
-          }
-        };
-
-        xhr.send(file);
-      });
-
-      setStage("saving");
-
-      // Verify the blob is reachable. Retry up to 4 times with a 4-second pause
-      // between attempts — Vercel Blob CDN can take a few seconds to propagate
-      // after the upload completes (especially when iOS fires onerror on the response).
-      async function verifyBlob(): Promise<string> {
-        const delays = [0, 4000, 6000, 8000];
-        for (const delay of delays) {
-          if (delay) await new Promise((r) => setTimeout(r, delay));
-          const res = await fetch("/api/upload/verify", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ pathname }),
-          });
-          if (res.ok) {
-            const { url } = await res.json();
-            if (url) return url;
-          }
+        if (!partRes.ok) {
+          const j = await partRes.json().catch(() => ({}));
+          throw new Error(j.error ?? `Part ${partNumber} failed (${partRes.status})`);
         }
-        throw new Error("Upload didn't land after multiple checks — please try again");
-      }
-      const verifiedUrl = await verifyBlob();
+        const { etag } = await partRes.json();
+        parts.push({ partNumber, etag });
 
-      await fetch("/api/upload/complete", {
+        setProgress(Math.round(((i + 1) / totalChunks) * 99));
+      }
+
+      // Step 3: complete the multipart upload and save URL to DB
+      setStage("saving");
+      const finishRes = await fetch("/api/upload/mpu-finish", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bagel_id: bagelId, video_url: verifiedUrl }),
+        body: JSON.stringify({ bagel_id: bagelId, pathname, uploadId, key, parts }),
       });
+      if (!finishRes.ok) {
+        const j = await finishRes.json().catch(() => ({}));
+        throw new Error(j.error ?? `Finish error ${finishRes.status}`);
+      }
+      const { url } = await finishRes.json();
 
-      setVideoUrl(finalUrl);
+      setVideoUrl(url);
       setProgress(100);
       setTimeout(() => window.location.reload(), 300);
     } catch (err) {

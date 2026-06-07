@@ -89,23 +89,18 @@ export default function VideoUploadZone({ bagelId, existingVideoUrl }: Props) {
 
       setStage("saving");
 
-      // Verify the blob exists and get the canonical CDN URL.
-      // This matters when iOS Safari fires onerror on the response: the blob IS
-      // stored but our pre-computed blobUrl might differ from Vercel's canonical URL.
-      let verifiedUrl = finalUrl;
-      try {
-        const verifyRes = await fetch("/api/upload/verify", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ pathname }),
-        });
-        if (verifyRes.ok) {
-          const { url } = await verifyRes.json();
-          if (url) verifiedUrl = url;
-        }
-      } catch {
-        // Non-fatal: fall back to the URL we already have
+      // Verify the blob actually landed in storage before saving the URL.
+      // If iOS Safari onerror fired even though the upload failed, the blob won't
+      // be there and list() returns empty — we must fail here rather than save a dead URL.
+      const verifyRes = await fetch("/api/upload/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pathname }),
+      });
+      if (!verifyRes.ok) {
+        throw new Error("Upload didn't land — please try again");
       }
+      const { url: verifiedUrl } = await verifyRes.json();
 
       await fetch("/api/upload/complete", {
         method: "POST",

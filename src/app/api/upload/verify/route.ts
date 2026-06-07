@@ -1,4 +1,3 @@
-import { list } from "@vercel/blob";
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 
@@ -15,15 +14,18 @@ export async function POST(req: NextRequest) {
   const { pathname } = await req.json();
   if (!pathname) return NextResponse.json({ error: "pathname required" }, { status: 400 });
 
-  const { blobs } = await list({
-    token: process.env.BLOB_READ_WRITE_TOKEN,
-    prefix: pathname,
-    limit: 1,
-  });
+  const storeId = process.env.BLOB_READ_WRITE_TOKEN.split("_")[3] ?? "";
+  const url = `https://${storeId}.public.blob.vercel-storage.com/${pathname}`;
 
-  if (!blobs.length) {
-    return NextResponse.json({ error: "Blob not found" }, { status: 404 });
+  // HEAD the CDN URL directly — faster and more consistent than list()
+  try {
+    const headRes = await fetch(url, { method: "HEAD" });
+    if (headRes.ok) {
+      return NextResponse.json({ url });
+    }
+  } catch {
+    // network error hitting CDN — fall through to return 404
   }
 
-  return NextResponse.json({ url: blobs[0].url });
+  return NextResponse.json({ error: "Blob not found", url }, { status: 404 });
 }

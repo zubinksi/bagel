@@ -89,18 +89,26 @@ export default function VideoUploadZone({ bagelId, existingVideoUrl }: Props) {
 
       setStage("saving");
 
-      // Verify the blob actually landed in storage before saving the URL.
-      // If iOS Safari onerror fired even though the upload failed, the blob won't
-      // be there and list() returns empty — we must fail here rather than save a dead URL.
-      const verifyRes = await fetch("/api/upload/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pathname }),
-      });
-      if (!verifyRes.ok) {
-        throw new Error("Upload didn't land — please try again");
+      // Verify the blob is reachable. Retry up to 4 times with a 4-second pause
+      // between attempts — Vercel Blob CDN can take a few seconds to propagate
+      // after the upload completes (especially when iOS fires onerror on the response).
+      async function verifyBlob(): Promise<string> {
+        const delays = [0, 4000, 6000, 8000];
+        for (const delay of delays) {
+          if (delay) await new Promise((r) => setTimeout(r, delay));
+          const res = await fetch("/api/upload/verify", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ pathname }),
+          });
+          if (res.ok) {
+            const { url } = await res.json();
+            if (url) return url;
+          }
+        }
+        throw new Error("Upload didn't land after multiple checks — please try again");
       }
-      const { url: verifiedUrl } = await verifyRes.json();
+      const verifiedUrl = await verifyBlob();
 
       await fetch("/api/upload/complete", {
         method: "POST",

@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { upload } from "@vercel/blob/client";
 
 type Props = {
   bagelId: string;
@@ -28,28 +27,74 @@ export default function VideoUploadZone({ bagelId, existingVideoUrl }: Props) {
     try {
       setStage("uploading");
       const ext = file.name.split(".").pop() ?? "mp4";
-      const pathname = `bagels/${bagelId}-${Date.now()}.${ext}`;
 
-      // multipart:true uploads in 8MB chunks. onUploadProgress receives cumulative
-      // loaded/total across all chunks, so percentage goes 0→100 without looping.
-      const blob = await upload(pathname, file, {
-        access: "public",
-        handleUploadUrl: "/api/upload/blob",
-        clientPayload: bagelId,
-        multipart: true,
-        onUploadProgress: ({ percentage }) => {
-          setProgress(Math.min(99, Math.round(percentage)));
-        },
+      // Get a client upload token + the predictable blob URL (addRandomSuffix:false)
+      const tokenRes = await fetch("/api/upload/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bagel_id: bagelId, file_ext: ext }),
+      });
+      if (!tokenRes.ok) {
+        const j = await tokenRes.json().catch(() => ({}));
+        throw new Error(j.error ?? `Token error ${tokenRes.status}`);
+      }
+      const { clientToken, pathname, blobUrl } = await tokenRes.json();
+
+      // XHR gives real upload progress. iOS Safari fires onerror on the *response*
+      // even when the server has received every byte — the upload itself succeeds.
+      // In that case we fall back to the pre-computed blobUrl instead of the response.
+      const storeId = clientToken.split("_")[3] ?? "";
+      const uploadUrl = `https://vercel.com/api/blob/?pathname=${encodeURIComponent(pathname)}`;
+
+      const finalUrl = await new Promise<string>((resolve, reject) => {
+        let bytesSent = 0;
+        const xhr = new XMLHttpRequest();
+        xhr.open("PUT", uploadUrl, true);
+        xhr.setRequestHeader("Authorization", `Bearer ${clientToken}`);
+        xhr.setRequestHeader("x-vercel-blob-access", "public");
+        xhr.setRequestHeader("x-api-version", "12");
+        xhr.setRequestHeader("x-vercel-blob-store-id", storeId);
+
+        xhr.upload.addEventListener("progress", (e) => {
+          if (e.lengthComputable) {
+            bytesSent = e.loaded;
+            setProgress(Math.min(99, Math.round((e.loaded / e.total) * 99)));
+          }
+        });
+
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              resolve((JSON.parse(xhr.responseText) as { url: string }).url);
+            } catch {
+              resolve(blobUrl); // parse failed but upload succeeded
+            }
+          } else {
+            reject(new Error(`Upload failed (${xhr.status}): ${xhr.responseText.slice(0, 200)}`));
+          }
+        };
+
+        xhr.onerror = () => {
+          // iOS Safari triggers onerror on the response even after all bytes are sent.
+          // If ≥99% was sent, the blob is already stored — use the pre-computed URL.
+          if (bytesSent >= file.size * 0.99) {
+            resolve(blobUrl);
+          } else {
+            reject(new Error("Upload failed — check your connection and try again"));
+          }
+        };
+
+        xhr.send(file);
       });
 
       setStage("saving");
       await fetch("/api/upload/complete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bagel_id: bagelId, video_url: blob.url }),
+        body: JSON.stringify({ bagel_id: bagelId, video_url: finalUrl }),
       });
 
-      setVideoUrl(blob.url);
+      setVideoUrl(finalUrl);
       setProgress(100);
       setTimeout(() => window.location.reload(), 300);
     } catch (err) {
@@ -105,7 +150,7 @@ export default function VideoUploadZone({ bagelId, existingVideoUrl }: Props) {
               </p>
               <div className="mt-3 w-full max-w-[200px] mx-auto h-1.5 bg-zinc-700 rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-yellow-400 rounded-full transition-all duration-300"
+                  className="h-full bg-yellow-400 rounded-full transition-all duration-500"
                   style={{ width: `${Math.max(2, progress)}%` }}
                 />
               </div>

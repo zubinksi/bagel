@@ -29,15 +29,21 @@ export async function POST(req: NextRequest) {
 
   const pathname = `bagels/${bagel_id}-${Date.now()}.${file_ext ?? "mp4"}`;
 
-  // Generate a client upload token with no completion callback —
-  // client saves the URL directly via /api/upload/complete instead.
+  // addRandomSuffix: false keeps the pathname predictable so the client can
+  // construct the blob URL directly when iOS Safari fires onerror on the response.
   const clientToken = await generateClientTokenFromReadWriteToken({
     token: process.env.BLOB_READ_WRITE_TOKEN,
     pathname,
+    addRandomSuffix: false,
+    allowOverwrite: true,
     allowedContentTypes: ["video/mp4", "video/quicktime", "video/mov", "video/webm", "video/*"],
     maximumSizeInBytes: 500 * 1024 * 1024,
     validUntil: Date.now() + 30 * 60 * 1000,
   });
 
-  return NextResponse.json({ clientToken, pathname });
+  // storeId is the 4th segment of the read-write token (vercel_blob_rw_<storeId>_...)
+  const storeId = process.env.BLOB_READ_WRITE_TOKEN.split("_")[3] ?? "";
+  const blobUrl = `https://${storeId}.public.blob.vercel-storage.com/${pathname}`;
+
+  return NextResponse.json({ clientToken, pathname, blobUrl });
 }

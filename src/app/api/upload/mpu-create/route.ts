@@ -29,13 +29,17 @@ export async function POST(req: NextRequest) {
 
   const pathname = `bagels/${bagel_id}-${Date.now()}.${file_ext ?? "mp4"}`;
 
-  const { uploadId, key } = await createMultipartUpload(pathname, {
-    access: "public",
-    addRandomSuffix: false,
-    allowOverwrite: true,
-    contentType: content_type ?? "video/mp4",
-    token: process.env.BLOB_READ_WRITE_TOKEN,
-  });
-
-  return NextResponse.json({ uploadId, key, pathname });
+  try {
+    const { uploadId, key } = await createMultipartUpload(pathname, {
+      access: "public",
+      addRandomSuffix: false,
+      allowOverwrite: true,
+      contentType: content_type ?? "video/mp4",
+      token: process.env.BLOB_READ_WRITE_TOKEN,
+    });
+    return NextResponse.json({ uploadId, key, pathname });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "MPU create failed";
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
 }

@@ -25,13 +25,17 @@ export async function POST(req: NextRequest) {
   // Stream the request body directly to Vercel Blob — no full-body buffering
   const body = await req.arrayBuffer();
 
-  const result = await uploadPart(pathname, body, {
-    uploadId,
-    key,
-    partNumber,
-    access: "public",
-    token: process.env.BLOB_READ_WRITE_TOKEN,
-  });
-
-  return NextResponse.json({ etag: result.etag, partNumber });
+  try {
+    const result = await uploadPart(pathname, body, {
+      uploadId,
+      key,
+      partNumber,
+      access: "public",
+      token: process.env.BLOB_READ_WRITE_TOKEN,
+    });
+    return NextResponse.json({ etag: result.etag, partNumber });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "MPU part upload failed";
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
 }

@@ -29,14 +29,17 @@ export async function POST(req: NextRequest) {
   if (bagel.owner_user_id !== session.sleeper_user_id)
     return NextResponse.json({ error: "Not your bagel" }, { status: 403 });
 
-  const blob = await completeMultipartUpload(pathname, parts, {
-    uploadId,
-    key,
-    access: "public",
-    token: process.env.BLOB_READ_WRITE_TOKEN,
-  });
-
-  await db.from("bagels").update({ video_url: blob.url, video_path: null }).eq("id", bagel_id);
-
-  return NextResponse.json({ url: blob.url });
+  try {
+    const blob = await completeMultipartUpload(pathname, parts, {
+      uploadId,
+      key,
+      access: "public",
+      token: process.env.BLOB_READ_WRITE_TOKEN,
+    });
+    await db.from("bagels").update({ video_url: blob.url, video_path: null }).eq("id", bagel_id);
+    return NextResponse.json({ url: blob.url });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "MPU complete failed";
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
 }

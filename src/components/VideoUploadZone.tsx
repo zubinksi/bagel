@@ -88,10 +88,29 @@ export default function VideoUploadZone({ bagelId, existingVideoUrl }: Props) {
       });
 
       setStage("saving");
+
+      // Verify the blob exists and get the canonical CDN URL.
+      // This matters when iOS Safari fires onerror on the response: the blob IS
+      // stored but our pre-computed blobUrl might differ from Vercel's canonical URL.
+      let verifiedUrl = finalUrl;
+      try {
+        const verifyRes = await fetch("/api/upload/verify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pathname }),
+        });
+        if (verifyRes.ok) {
+          const { url } = await verifyRes.json();
+          if (url) verifiedUrl = url;
+        }
+      } catch {
+        // Non-fatal: fall back to the URL we already have
+      }
+
       await fetch("/api/upload/complete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bagel_id: bagelId, video_url: finalUrl }),
+        body: JSON.stringify({ bagel_id: bagelId, video_url: verifiedUrl }),
       });
 
       setVideoUrl(finalUrl);

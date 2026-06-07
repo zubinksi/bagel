@@ -1,21 +1,23 @@
 import type { Metadata } from "next";
 import { Geist } from "next/font/google";
-import NavBar from "@/components/NavBar";
+import { Bebas_Neue } from "next/font/google";
 import "./globals.css";
 
-const geist = Geist({ subsets: ["latin"] });
+const geist = Geist({ subsets: ["latin"], variable: "--font-geist" });
+const bebas = Bebas_Neue({ weight: "400", subsets: ["latin"], variable: "--font-bebas" });
 
 export const metadata: Metadata = {
-  title: "Bagel Board",
-  description: "Fantasy football bagel tracker — zero points, beer chug required.",
+  title: "Bagel Watch",
+  description: "The league's official record of every starter who scored a goose egg.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className={`${geist.className} bg-zinc-950 text-white min-h-screen`}>
-        <NavBar />
-        <main className="max-w-4xl mx-auto px-4 py-8">{children}</main>
+      <body className={`${geist.variable} ${bebas.variable} font-[var(--font-geist)] bg-[#09090B] text-white min-h-screen`}>
+        <div className="max-w-md mx-auto min-h-screen">
+          {children}
+        </div>
       </body>
     </html>
   );

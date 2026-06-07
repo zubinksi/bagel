@@ -1,6 +1,21 @@
 @import "tailwindcss";
 
+:root {
+  --accent: #EAB308;
+  --accent-bright: #FDE047;
+  --bg: #09090B;
+  --bg-card: #111113;
+  --bg-elevated: #18181B;
+  --border: #27272A;
+  --red: #EF4444;
+}
+
 body {
-  background: #09090b;
-  color: #fafafa;
+  background: var(--bg);
+  color: #FAFAFA;
+}
+
+.font-display {
+  font-family: var(--font-bebas);
+  letter-spacing: 0.02em;
 }

@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { upload } from "@vercel/blob/client";
+import { useRef, useState } from "react";
 
 type Props = {
   bagelId: string;
@@ -16,24 +15,6 @@ export default function VideoUploadZone({ bagelId, existingVideoUrl }: Props) {
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [videoUrl, setVideoUrl] = useState(existingVideoUrl);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  // Time-based progress bar — avoids the per-chunk 0→100% loop from multipart uploads
-  useEffect(() => {
-    if (stage === "uploading") {
-      setProgress(2);
-      timerRef.current = setInterval(() => {
-        setProgress((p) => {
-          if (p >= 88) { clearInterval(timerRef.current!); return p; }
-          // Slow down as it approaches the cap so it feels natural
-          return p + (88 - p) * 0.04;
-        });
-      }, 500);
-    } else {
-      if (timerRef.current) clearInterval(timerRef.current);
-    }
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [stage]);
 
   async function handleFile(file: File) {
     if (!file.type.startsWith("video/")) {
@@ -46,23 +27,63 @@ export default function VideoUploadZone({ bagelId, existingVideoUrl }: Props) {
     try {
       setStage("uploading");
       const ext = file.name.split(".").pop() ?? "mp4";
-      const pathname = `bagels/${bagelId}-${Date.now()}.${ext}`;
 
-      const blob = await upload(pathname, file, {
-        access: "public",
-        handleUploadUrl: "/api/upload/blob",
-        clientPayload: bagelId,
-        multipart: true,
+      // Step 1: Get a client upload token from our server
+      const tokenRes = await fetch("/api/upload/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bagel_id: bagelId, file_ext: ext }),
+      });
+      if (!tokenRes.ok) {
+        const j = await tokenRes.json().catch(() => ({}));
+        throw new Error(j.error ?? `Token error ${tokenRes.status}`);
+      }
+      const { clientToken, pathname } = await tokenRes.json();
+
+      // Step 2: Upload directly to Vercel Blob via XHR (real progress, no silent retries)
+      // Token format: vercel_blob_client_<storeId>_<base64payload>
+      const storeId = clientToken.split("_")[3] ?? "";
+      const uploadUrl = `https://vercel.com/api/blob/?pathname=${encodeURIComponent(pathname)}`;
+
+      const blobResult = await new Promise<{ url: string }>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("PUT", uploadUrl, true);
+        xhr.setRequestHeader("Authorization", `Bearer ${clientToken}`);
+        xhr.setRequestHeader("x-vercel-blob-access", "public");
+        xhr.setRequestHeader("x-api-version", "12");
+        xhr.setRequestHeader("x-vercel-blob-store-id", storeId);
+
+        xhr.upload.addEventListener("progress", (e) => {
+          if (e.lengthComputable) {
+            setProgress(Math.min(98, Math.round((e.loaded / e.total) * 98)));
+          }
+        });
+
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              resolve(JSON.parse(xhr.responseText));
+            } catch {
+              reject(new Error(`Bad response: ${xhr.responseText.slice(0, 120)}`));
+            }
+          } else {
+            reject(new Error(`Upload failed (${xhr.status}): ${xhr.responseText.slice(0, 200)}`));
+          }
+        };
+        xhr.onerror = () => reject(new Error("Network error — check your connection"));
+        xhr.ontimeout = () => reject(new Error("Upload timed out"));
+        xhr.send(file);
       });
 
+      // Step 3: Save the URL to DB
       setStage("saving");
       await fetch("/api/upload/complete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bagel_id: bagelId, video_url: blob.url }),
+        body: JSON.stringify({ bagel_id: bagelId, video_url: blobResult.url }),
       });
 
-      setVideoUrl(blob.url);
+      setVideoUrl(blobResult.url);
       setProgress(100);
       setTimeout(() => window.location.reload(), 300);
     } catch (err) {
@@ -113,10 +134,12 @@ export default function VideoUploadZone({ bagelId, existingVideoUrl }: Props) {
         <div className="text-center w-full">
           {stage === "uploading" ? (
             <>
-              <p className="font-display text-xl text-white tracking-wide">UPLOADING...</p>
+              <p className="font-display text-xl text-white tracking-wide">
+                UPLOADING{progress > 0 ? ` ${progress}%` : "..."}
+              </p>
               <div className="mt-3 w-full max-w-[200px] mx-auto h-1.5 bg-zinc-700 rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-yellow-400 rounded-full transition-all duration-500"
+                  className="h-full bg-yellow-400 rounded-full transition-all duration-300"
                   style={{ width: `${progress}%` }}
                 />
               </div>

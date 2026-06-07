@@ -2,7 +2,7 @@ import { uploadPart } from "@vercel/blob";
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 
-export const dynamic = "force-dynamic";
+export const runtime = "edge";
 
 export async function POST(req: NextRequest) {
   if (!process.env.BLOB_READ_WRITE_TOKEN) {

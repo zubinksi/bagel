@@ -84,7 +84,6 @@ export default async function BagelPage({ params }: Props) {
           <VideoUploadZone
             bagelId={bagel.id}
             existingVideoUrl={bagel.video_url}
-            onUploaded={() => { window.location.reload(); }}
           />
         </div>
       ) : (
@@ -145,7 +144,6 @@ export default async function BagelPage({ params }: Props) {
               <VideoUploadZone
                 bagelId={bagel.id}
                 existingVideoUrl={null}
-                onUploaded={() => { window.location.reload(); }}
               />
             ) : (
               <div className="aspect-video bg-[#111113] border border-zinc-800 rounded-xl flex flex-col items-center justify-center gap-2">

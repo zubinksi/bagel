@@ -5,10 +5,9 @@ import { useRef, useState } from "react";
 type Props = {
   bagelId: string;
   existingVideoUrl: string | null;
-  onUploaded: (url: string) => void;
 };
 
-export default function VideoUploadZone({ bagelId, existingVideoUrl, onUploaded }: Props) {
+export default function VideoUploadZone({ bagelId, existingVideoUrl }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -26,7 +25,7 @@ export default function VideoUploadZone({ bagelId, existingVideoUrl, onUploaded 
     if (!res.ok) { const j = await res.json(); setError(j.error ?? "Upload failed"); return; }
     const { video_url } = await res.json();
     setVideoUrl(video_url);
-    onUploaded(video_url);
+    window.location.reload();
   }
 
   if (videoUrl) {

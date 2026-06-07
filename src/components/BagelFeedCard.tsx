@@ -41,7 +41,7 @@ export default function BagelFeedCard({ bagel }: Props) {
                 ) : (
                   <>
                     <span className="w-2 h-2 rounded-full bg-red-500 inline-block" />
-                    <span className="text-red-400 text-xs font-medium">PENANCE PENDING</span>
+                    <span className="text-red-400 text-xs font-medium">BEER CHUG PENDING</span>
                   </>
                 )}
               </div>

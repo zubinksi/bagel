@@ -81,7 +81,6 @@ export default function HomeFeed({ initialWeek, season }: { initialWeek: number;
 
       {/* Week summary card */}
       <div className="mx-4 mb-4 bg-[#111113] rounded-2xl p-5 border border-zinc-800">
-        <p className="text-zinc-500 text-xs uppercase tracking-widest mb-1">Goose eggs this week</p>
         <div className="flex items-end justify-between">
           <div>
             <h2 className="font-display text-5xl text-white leading-none">WEEK {selectedWeek}</h2>

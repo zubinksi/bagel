@@ -52,6 +52,7 @@ export default function VideoUploadZone({ bagelId, existingVideoUrl }: Props) {
         access: "public",
         handleUploadUrl: "/api/upload/blob",
         clientPayload: bagelId,
+        multipart: true,
       });
 
       setStage("saving");

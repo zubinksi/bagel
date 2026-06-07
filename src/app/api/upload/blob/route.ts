@@ -24,6 +24,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const bagelId = body.payload?.clientPayload;
   const pathname = body.payload?.pathname;
+  const multipart = body.payload?.multipart ?? false;
 
   if (!bagelId || !pathname) {
     return NextResponse.json({ error: "bagelId and pathname required" }, { status: 400 });

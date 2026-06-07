@@ -1,6 +1,11 @@
 "use client";
 
 import { useRef, useState } from "react";
+import {
+  createMultipartUpload,
+  uploadPart,
+  completeMultipartUpload,
+} from "@vercel/blob/client";
 
 type Props = {
   bagelId: string;
@@ -9,9 +14,9 @@ type Props = {
 
 type Stage = "idle" | "uploading" | "saving";
 
-// 5 MB per chunk — same-origin fetch on iOS has no cross-origin issues,
-// and 5 MB stays comfortably below Vercel's per-request body limit while
-// matching the minimum part size for S3/R2-backed multipart uploads.
+// 5 MB — S3/R2 minimum part size (except last). Chunks go directly to
+// blob.vercel-storage.com via the client SDK, bypassing Vercel's 4 MB
+// function body limit entirely.
 const CHUNK_SIZE = 5 * 1024 * 1024;
 
 export default function VideoUploadZone({ bagelId, existingVideoUrl }: Props) {
@@ -34,7 +39,7 @@ export default function VideoUploadZone({ bagelId, existingVideoUrl }: Props) {
       const ext = file.name.split(".").pop() ?? "mp4";
       const contentType = file.type || "video/mp4";
 
-      // Step 1: create multipart upload session on the server
+      // Step 1: get a client token from our server (auth + ownership check)
       const initRes = await fetch("/api/upload/mpu-create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -44,47 +49,55 @@ export default function VideoUploadZone({ bagelId, existingVideoUrl }: Props) {
         const j = await initRes.json().catch(() => ({}));
         throw new Error(j.error ?? `Init error ${initRes.status}`);
       }
-      const { uploadId, key, pathname } = await initRes.json();
+      const { clientToken, pathname } = await initRes.json();
 
-      // Step 2: upload file in chunks via same-origin POST (no cross-origin iOS issues)
+      // Step 2: start MPU directly on Vercel Blob (no function body limit)
+      const { uploadId, key } = await createMultipartUpload(pathname, {
+        access: "private",
+        token: clientToken,
+        contentType,
+      });
+
+      // Step 3: upload chunks directly to Vercel Blob
       const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
       const parts: { partNumber: number; etag: string }[] = [];
 
       for (let i = 0; i < totalChunks; i++) {
-        const start = i * CHUNK_SIZE;
-        const chunk = file.slice(start, start + CHUNK_SIZE);
+        const chunk = file.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
         const partNumber = i + 1;
 
-        const params = new URLSearchParams({ uploadId, key, pathname, partNumber: String(partNumber) });
-        const partRes = await fetch(`/api/upload/mpu-part?${params}`, {
-          method: "POST",
-          body: chunk,
-          headers: { "Content-Type": "application/octet-stream" },
+        const result = await uploadPart(pathname, chunk, {
+          access: "private",
+          token: clientToken,
+          uploadId,
+          key,
+          partNumber,
         });
-        if (!partRes.ok) {
-          const j = await partRes.json().catch(() => ({}));
-          throw new Error(j.error ?? `Part ${partNumber} failed (${partRes.status})`);
-        }
-        const { etag } = await partRes.json();
-        parts.push({ partNumber, etag });
-
-        setProgress(Math.round(((i + 1) / totalChunks) * 99));
+        parts.push({ partNumber: result.partNumber, etag: result.etag });
+        setProgress(Math.round(((i + 1) / totalChunks) * 90));
       }
 
-      // Step 3: complete the multipart upload and save URL to DB
+      // Step 4: complete MPU directly on Vercel Blob
       setStage("saving");
+      const blob = await completeMultipartUpload(pathname, parts, {
+        access: "private",
+        token: clientToken,
+        uploadId,
+        key,
+      });
+
+      // Step 5: save URL + pathname to DB via our server
       const finishRes = await fetch("/api/upload/mpu-finish", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bagel_id: bagelId, pathname, uploadId, key, parts }),
+        body: JSON.stringify({ bagel_id: bagelId, url: blob.url, pathname }),
       });
       if (!finishRes.ok) {
         const j = await finishRes.json().catch(() => ({}));
-        throw new Error(j.error ?? `Finish error ${finishRes.status}`);
+        throw new Error(j.error ?? `Save error ${finishRes.status}`);
       }
-      const { url } = await finishRes.json();
 
-      setVideoUrl(url);
+      setVideoUrl(blob.url);
       setProgress(100);
       setTimeout(() => window.location.reload(), 300);
     } catch (err) {

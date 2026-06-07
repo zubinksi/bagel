@@ -1,4 +1,4 @@
-import { createMultipartUpload } from "@vercel/blob";
+import { generateClientTokenFromReadWriteToken } from "@vercel/blob/client";
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase";
@@ -30,16 +30,18 @@ export async function POST(req: NextRequest) {
   const pathname = `bagels/${bagel_id}-${Date.now()}.${file_ext ?? "mp4"}`;
 
   try {
-    const { uploadId, key } = await createMultipartUpload(pathname, {
+    const clientToken = await generateClientTokenFromReadWriteToken({
       access: "private",
+      pathname,
       addRandomSuffix: false,
       allowOverwrite: true,
       contentType: content_type ?? "video/mp4",
+      validUntil: Date.now() + 30 * 60 * 1000, // 30 min — enough for large uploads
       token: process.env.BLOB_READ_WRITE_TOKEN,
     });
-    return NextResponse.json({ uploadId, key, pathname });
+    return NextResponse.json({ clientToken, pathname });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : "MPU create failed";
+    const msg = err instanceof Error ? err.message : "Token generation failed";
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

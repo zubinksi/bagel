@@ -137,7 +137,14 @@ export default async function BagelPage({ params }: Props) {
               ▶ {isOwner ? "THE REPLAY · CHUG CAM" : "CHUG CAM"}
             </p>
             {bagel.video_url ? (
-              <VideoPlayer src={`/api/video/${bagel.id}`} canReplace={isOwner} bagelId={bagel.id} />
+              <VideoPlayer
+                src={`/api/video/${bagel.id}`}
+                canReplace={isOwner}
+                bagelId={bagel.id}
+                week={bagel.week}
+                playerName={bagel.player_name}
+                playerPosition={player?.position}
+              />
             ) : isOwner ? (
               <VideoUploadZone
                 bagelId={bagel.id}

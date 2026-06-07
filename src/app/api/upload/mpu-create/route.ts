@@ -31,11 +31,10 @@ export async function POST(req: NextRequest) {
 
   try {
     const clientToken = await generateClientTokenFromReadWriteToken({
-      access: "private",
       pathname,
       addRandomSuffix: false,
       allowOverwrite: true,
-      contentType: content_type ?? "video/mp4",
+      allowedContentTypes: ["video/*"],
       validUntil: Date.now() + 30 * 60 * 1000, // 30 min — enough for large uploads
       token: process.env.BLOB_READ_WRITE_TOKEN,
     });

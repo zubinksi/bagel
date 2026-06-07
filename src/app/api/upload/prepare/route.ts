@@ -30,7 +30,10 @@ export async function POST(req: NextRequest) {
   // Ensure bucket exists with 500MB limit; update if it already exists with a lower limit
   const FILE_SIZE_LIMIT = 500 * 1024 * 1024;
   await db.storage.createBucket(BUCKET, { public: false, fileSizeLimit: FILE_SIZE_LIMIT }).catch(() => {});
-  await db.storage.updateBucket(BUCKET, { public: false, fileSizeLimit: FILE_SIZE_LIMIT }).catch(() => {});
+  const { error: updateErr } = await db.storage.updateBucket(BUCKET, { public: false, fileSizeLimit: FILE_SIZE_LIMIT });
+  if (updateErr) {
+    console.error("[upload/prepare] updateBucket error:", updateErr.message);
+  }
 
   const ext = file_ext ?? "mp4";
   const path = `${session.sleeper_user_id}/${bagel_id}.${ext}`;

@@ -1,56 +1,53 @@
-import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
+import { generateClientTokenFromReadWriteToken } from "@vercel/blob/client";
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase";
 
-
 export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  // Surface missing env var immediately so it shows in Vercel logs
   if (!process.env.BLOB_READ_WRITE_TOKEN) {
-    console.error("[upload/blob] BLOB_READ_WRITE_TOKEN is not set");
-    return NextResponse.json({ error: "Blob storage not configured (missing BLOB_READ_WRITE_TOKEN)" }, { status: 500 });
+    return NextResponse.json({ error: "Blob storage not configured" }, { status: 500 });
   }
 
-  const body = (await request.json()) as HandleUploadBody;
-  console.log("[upload/blob] request type:", (body as any).type);
+  const body = await request.json();
 
-  try {
-    const jsonResponse = await handleUpload({
-      body,
-      request,
-      onBeforeGenerateToken: async (_pathname, clientPayload) => {
-        const session = await getSession();
-        if (!session) throw new Error("Not logged in");
-
-        const bagelId = clientPayload;
-        const db = supabaseAdmin();
-        const { data: bagel } = await db
-          .from("bagels")
-          .select("owner_user_id")
-          .eq("id", bagelId)
-          .single();
-
-        if (!bagel) throw new Error("Bagel not found");
-        if (bagel.owner_user_id !== session.sleeper_user_id)
-          throw new Error("Not your bagel");
-
-        return {
-          allowedContentTypes: ["video/mp4", "video/quicktime", "video/mov", "video/webm", "video/*"],
-          maximumSizeInBytes: 500 * 1024 * 1024,
-          tokenPayload: JSON.stringify({ bagelId }),
-        };
-      },
-      // No-op: handleUpload needs this handler to return a success response when Vercel
-      // sends the completion ping, otherwise upload() hangs on the client. The actual
-      // DB save happens via /api/upload/complete called directly from the client.
-      onUploadCompleted: async () => {},
-    });
-
-    return NextResponse.json(jsonResponse);
-  } catch (error) {
-    console.error("[upload/blob] error:", (error as Error).message);
-    return NextResponse.json({ error: (error as Error).message }, { status: 400 });
+  // Completion ping from Vercel Blob — return immediately.
+  // The client calls /api/upload/complete to persist the URL after upload() resolves.
+  if (body.type === "blob.upload-completed") {
+    return NextResponse.json({ ok: true });
   }
+
+  // Token generation request from the client (blob.generate-client-token)
+  const session = await getSession();
+  if (!session) return NextResponse.json({ error: "Not logged in" }, { status: 401 });
+
+  const bagelId = body.payload?.clientPayload;
+  const pathname = body.payload?.pathname;
+
+  if (!bagelId || !pathname) {
+    return NextResponse.json({ error: "bagelId and pathname required" }, { status: 400 });
+  }
+
+  const db = supabaseAdmin();
+  const { data: bagel } = await db
+    .from("bagels")
+    .select("owner_user_id")
+    .eq("id", bagelId)
+    .single();
+
+  if (!bagel) return NextResponse.json({ error: "Bagel not found" }, { status: 404 });
+  if (bagel.owner_user_id !== session.sleeper_user_id) {
+    return NextResponse.json({ error: "Not your bagel" }, { status: 403 });
+  }
+
+  const clientToken = await generateClientTokenFromReadWriteToken({
+    token: process.env.BLOB_READ_WRITE_TOKEN,
+    pathname,
+    allowedContentTypes: ["video/mp4", "video/quicktime", "video/mov", "video/webm", "video/*"],
+    maximumSizeInBytes: 500 * 1024 * 1024,
+    validUntil: Date.now() + 30 * 60 * 1000,
+  });
+
+  return NextResponse.json({ clientToken });
 }

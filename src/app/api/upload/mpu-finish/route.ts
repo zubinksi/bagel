@@ -33,10 +33,10 @@ export async function POST(req: NextRequest) {
     const blob = await completeMultipartUpload(pathname, parts, {
       uploadId,
       key,
-      access: "public",
+      access: "private",
       token: process.env.BLOB_READ_WRITE_TOKEN,
     });
-    await db.from("bagels").update({ video_url: blob.url, video_path: null }).eq("id", bagel_id);
+    await db.from("bagels").update({ video_url: blob.url, video_path: pathname }).eq("id", bagel_id);
     return NextResponse.json({ url: blob.url });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "MPU complete failed";

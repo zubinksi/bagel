@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
       uploadId,
       key,
       partNumber,
-      access: "public",
+      access: "private",
       token: process.env.BLOB_READ_WRITE_TOKEN,
     });
     return NextResponse.json({ etag: result.etag, partNumber });

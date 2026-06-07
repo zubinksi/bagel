@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const { uploadId, key } = await createMultipartUpload(pathname, {
-      access: "public",
+      access: "private",
       addRandomSuffix: false,
       allowOverwrite: true,
       contentType: content_type ?? "video/mp4",

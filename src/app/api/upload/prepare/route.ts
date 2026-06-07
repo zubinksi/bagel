@@ -27,8 +27,10 @@ export async function POST(req: NextRequest) {
     await db.storage.from(BUCKET).remove([bagel.video_path]);
   }
 
-  // Ensure the bucket exists (creates it if not, ignores error if it already does)
-  await db.storage.createBucket(BUCKET, { public: false }).catch(() => {});
+  // Ensure bucket exists with 500MB limit; update if it already exists with a lower limit
+  const FILE_SIZE_LIMIT = 500 * 1024 * 1024;
+  await db.storage.createBucket(BUCKET, { public: false, fileSizeLimit: FILE_SIZE_LIMIT }).catch(() => {});
+  await db.storage.updateBucket(BUCKET, { public: false, fileSizeLimit: FILE_SIZE_LIMIT }).catch(() => {});
 
   const ext = file_ext ?? "mp4";
   const path = `${session.sleeper_user_id}/${bagel_id}.${ext}`;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { upload } from "@vercel/blob/client";
 
 type Props = {
@@ -16,6 +16,24 @@ export default function VideoUploadZone({ bagelId, existingVideoUrl }: Props) {
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [videoUrl, setVideoUrl] = useState(existingVideoUrl);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Time-based progress bar — avoids the per-chunk 0→100% loop from multipart uploads
+  useEffect(() => {
+    if (stage === "uploading") {
+      setProgress(2);
+      timerRef.current = setInterval(() => {
+        setProgress((p) => {
+          if (p >= 88) { clearInterval(timerRef.current!); return p; }
+          // Slow down as it approaches the cap so it feels natural
+          return p + (88 - p) * 0.04;
+        });
+      }, 500);
+    } else {
+      if (timerRef.current) clearInterval(timerRef.current);
+    }
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [stage]);
 
   async function handleFile(file: File) {
     if (!file.type.startsWith("video/")) {
@@ -26,14 +44,13 @@ export default function VideoUploadZone({ bagelId, existingVideoUrl }: Props) {
     setProgress(0);
 
     try {
-      // Upload directly from browser to Vercel Blob (500MB limit, real progress)
       setStage("uploading");
       const ext = file.name.split(".").pop() ?? "mp4";
       const blob = await upload(`bagels/${bagelId}-${Date.now()}.${ext}`, file, {
         access: "public",
         handleUploadUrl: "/api/upload/blob",
         clientPayload: bagelId,
-        onUploadProgress: ({ percentage }) => setProgress(Math.round(percentage)),
+        // No onUploadProgress — multipart uploads report per-chunk, not total
       });
 
       // Belt-and-suspenders: save URL to DB (onUploadCompleted also does this server-side)
@@ -95,10 +112,10 @@ export default function VideoUploadZone({ bagelId, existingVideoUrl }: Props) {
         <div className="text-center w-full">
           {stage === "uploading" ? (
             <>
-              <p className="font-display text-xl text-white tracking-wide">UPLOADING... {progress}%</p>
+              <p className="font-display text-xl text-white tracking-wide">UPLOADING...</p>
               <div className="mt-3 w-full max-w-[200px] mx-auto h-1.5 bg-zinc-700 rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-yellow-400 rounded-full transition-all duration-200"
+                  className="h-full bg-yellow-400 rounded-full transition-all duration-500"
                   style={{ width: `${progress}%` }}
                 />
               </div>

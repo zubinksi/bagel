@@ -8,7 +8,18 @@ const bebas = Bebas_Neue({ weight: "400", subsets: ["latin"], variable: "--font-
 
 export const metadata: Metadata = {
   title: "Bagel Watch",
-  description: "The league's official record of every starter who scored a goose egg.",
+  description: "The league's official record of every starter who scored zero points — and the beer chugs that follow.",
+  openGraph: {
+    title: "Bagel Watch",
+    description: "The league's official record of every starter who scored zero points — and the beer chugs that follow.",
+    siteName: "Bagel Watch",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Bagel Watch",
+    description: "The league's official record of every starter who scored zero points — and the beer chugs that follow.",
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

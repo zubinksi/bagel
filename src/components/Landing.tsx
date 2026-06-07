@@ -21,7 +21,7 @@ export default async function Landing() {
         BAGEL<br />WATCH
       </h1>
       <p className="text-zinc-400 text-base max-w-xs leading-relaxed mb-10">
-        The league&apos;s official record of every starter who scored a goose egg — and the chugs that follow.
+        The league&apos;s official record of every starter who scored zero points — and the beer chugs that follow.
       </p>
 
       {/* Stats */}

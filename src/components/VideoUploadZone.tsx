@@ -44,13 +44,32 @@ export default function VideoUploadZone({ bagelId, existingVideoUrl }: Props) {
     setProgress(0);
 
     try {
+      // Step 1: Get a direct upload token from our server (no callbacks)
       setStage("uploading");
       const ext = file.name.split(".").pop() ?? "mp4";
-      const blob = await upload(`bagels/${bagelId}-${Date.now()}.${ext}`, file, {
+      const tokenRes = await fetch("/api/upload/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bagel_id: bagelId, file_ext: ext }),
+      });
+      if (!tokenRes.ok) {
+        const j = await tokenRes.json().catch(() => ({}));
+        throw new Error(j.error ?? `Token error ${tokenRes.status}`);
+      }
+      const { clientToken, pathname } = await tokenRes.json();
+
+      // Step 2: Upload directly to Vercel Blob — no completion callback, no handshake
+      const blob = await upload(pathname, file, {
         access: "public",
-        handleUploadUrl: "/api/upload/blob",
-        clientPayload: bagelId,
-        // No onUploadProgress — multipart uploads report per-chunk, not total
+        clientUploadToken: clientToken,
+      });
+
+      // Step 3: Save the URL to the DB
+      setStage("saving");
+      await fetch("/api/upload/complete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bagel_id: bagelId, video_url: blob.url }),
       });
 
       // Belt-and-suspenders: save URL to DB (onUploadCompleted also does this server-side)

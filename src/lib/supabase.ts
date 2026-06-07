@@ -18,6 +18,9 @@ export type Bagel = {
   video_url: string | null;
   video_path: string | null;
   created_at: string;
+  proj_pts?: number | null;
+  snaps?: number | null;
+  touches?: number | null;
   users?: User;
   ratings?: Rating[];
   avg_rating?: number | null;

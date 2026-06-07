@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type Props = {
   bagelId: string;
@@ -15,6 +15,23 @@ export default function VideoUploadZone({ bagelId, existingVideoUrl }: Props) {
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [videoUrl, setVideoUrl] = useState(existingVideoUrl);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Animated progress bar — eases toward 90% cap while upload is in flight
+  useEffect(() => {
+    if (stage === "uploading") {
+      setProgress(2);
+      timerRef.current = setInterval(() => {
+        setProgress((p) => {
+          if (p >= 90) { clearInterval(timerRef.current!); return p; }
+          return p + (90 - p) * 0.03;
+        });
+      }, 400);
+    } else {
+      if (timerRef.current) clearInterval(timerRef.current);
+    }
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [stage]);
 
   async function handleFile(file: File) {
     if (!file.type.startsWith("video/")) {
@@ -40,40 +57,28 @@ export default function VideoUploadZone({ bagelId, existingVideoUrl }: Props) {
       }
       const { clientToken, pathname } = await tokenRes.json();
 
-      // Step 2: Upload directly to Vercel Blob via XHR (real progress, no silent retries)
+      // Step 2: Upload directly to Vercel Blob via fetch (avoids iOS XHR onerror bug)
       // Token format: vercel_blob_client_<storeId>_<base64payload>
       const storeId = clientToken.split("_")[3] ?? "";
       const uploadUrl = `https://vercel.com/api/blob/?pathname=${encodeURIComponent(pathname)}`;
 
-      const blobResult = await new Promise<{ url: string }>((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open("PUT", uploadUrl, true);
-        xhr.setRequestHeader("Authorization", `Bearer ${clientToken}`);
-        xhr.setRequestHeader("x-vercel-blob-access", "public");
-        xhr.setRequestHeader("x-api-version", "12");
-        xhr.setRequestHeader("x-vercel-blob-store-id", storeId);
-
-        xhr.upload.addEventListener("progress", (e) => {
-          if (e.lengthComputable) {
-            setProgress(Math.min(98, Math.round((e.loaded / e.total) * 98)));
-          }
-        });
-
-        xhr.onload = () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            try {
-              resolve(JSON.parse(xhr.responseText));
-            } catch {
-              reject(new Error(`Bad response: ${xhr.responseText.slice(0, 120)}`));
-            }
-          } else {
-            reject(new Error(`Upload failed (${xhr.status}): ${xhr.responseText.slice(0, 200)}`));
-          }
-        };
-        xhr.onerror = () => reject(new Error("Network error — check your connection"));
-        xhr.ontimeout = () => reject(new Error("Upload timed out"));
-        xhr.send(file);
+      const uploadRes = await fetch(uploadUrl, {
+        method: "PUT",
+        headers: {
+          "Authorization": `Bearer ${clientToken}`,
+          "x-vercel-blob-access": "public",
+          "x-api-version": "12",
+          "x-vercel-blob-store-id": storeId,
+        },
+        body: file,
       });
+
+      if (!uploadRes.ok) {
+        const text = await uploadRes.text().catch(() => "");
+        throw new Error(`Upload failed (${uploadRes.status}): ${text.slice(0, 200)}`);
+      }
+
+      const blobResult: { url: string } = await uploadRes.json();
 
       // Step 3: Save the URL to DB
       setStage("saving");
@@ -134,12 +139,10 @@ export default function VideoUploadZone({ bagelId, existingVideoUrl }: Props) {
         <div className="text-center w-full">
           {stage === "uploading" ? (
             <>
-              <p className="font-display text-xl text-white tracking-wide">
-                UPLOADING{progress > 0 ? ` ${progress}%` : "..."}
-              </p>
+              <p className="font-display text-xl text-white tracking-wide">UPLOADING...</p>
               <div className="mt-3 w-full max-w-[200px] mx-auto h-1.5 bg-zinc-700 rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-yellow-400 rounded-full transition-all duration-300"
+                  className="h-full bg-yellow-400 rounded-full transition-all duration-400"
                   style={{ width: `${progress}%` }}
                 />
               </div>

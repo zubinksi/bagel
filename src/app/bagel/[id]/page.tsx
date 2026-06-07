@@ -73,7 +73,7 @@ export default async function BagelPage({ params }: Props) {
 
           {/* Rules */}
           <div>
-            <p className="font-display text-sm text-red-400 tracking-widest mb-2">THE RULES OF PENANCE</p>
+            <p className="font-display text-sm text-red-400 tracking-widest mb-2">THE RULES OF BAGELS</p>
             <p className="text-zinc-300 text-sm leading-relaxed">
               You started a player who scored a clean <span className="text-yellow-400 font-semibold">zero</span>.
               League law demands a chug. Film it, post it, take your rating like a champion.
@@ -116,10 +116,8 @@ export default async function BagelPage({ params }: Props) {
             </div>
 
             {/* Stats row */}
-            <div className="border-t border-zinc-800 grid grid-cols-4 divide-x divide-zinc-800">
+            <div className="border-t border-zinc-800 grid grid-cols-2 divide-x divide-zinc-800">
               {[
-                { label: "SNAPS", value: (bagel as any).snaps ?? "—" },
-                { label: "TOUCHES", value: (bagel as any).touches ?? "—" },
                 { label: "PROJ", value: (bagel as any).proj_pts != null ? (bagel as any).proj_pts.toFixed(1) : "—" },
                 { label: "ACTUAL", value: "0.0", red: true },
               ].map((stat) => (

@@ -69,10 +69,6 @@ export default function HomeFeed({ initialWeek, season }: { initialWeek: number;
           <span className="font-display text-2xl text-white tracking-wide">BAGEL WATCH</span>
         </div>
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5 bg-red-500/20 border border-red-500/50 rounded-full px-3 py-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-            <span className="font-display text-sm text-red-400 tracking-wider">LIVE · WEEK {initialWeek}</span>
-          </div>
           <button onClick={logout} className="text-zinc-500 hover:text-zinc-300 text-xs transition">
             {session?.display_name ?? session?.username ?? "Sign out"}
           </button>
@@ -84,9 +80,6 @@ export default function HomeFeed({ initialWeek, season }: { initialWeek: number;
         <div className="flex items-end justify-between">
           <div>
             <h2 className="font-display text-5xl text-white leading-none">WEEK {selectedWeek}</h2>
-            <p className="text-zinc-400 text-sm mt-1">
-              {weekBagelCount} starters · {chugsPosted} chugs posted
-            </p>
           </div>
           <div className="text-right">
             <span className="font-display text-6xl text-yellow-400 leading-none">{weekBagelCount}</span>
@@ -128,7 +121,6 @@ export default function HomeFeed({ initialWeek, season }: { initialWeek: number;
       <div className="px-4 mb-6">
         <div className="flex items-center justify-between mb-3">
           <span className="text-zinc-400 text-xs uppercase tracking-widest">Week {selectedWeek} Box Scores</span>
-          <span className="text-yellow-400 text-xs">{weekBagelCount} BAGELS</span>
         </div>
         {loadingBagels ? (
           <div className="flex items-center justify-center py-12 text-zinc-600">

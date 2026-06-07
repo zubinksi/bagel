@@ -169,23 +169,6 @@ export default function VideoUploadZone({ bagelId, existingVideoUrl }: Props) {
         </div>
       </button>
 
-      <div className="grid grid-cols-2 gap-3">
-        <button
-          onClick={() => !busy && inputRef.current?.click()}
-          disabled={busy}
-          className="py-4 bg-yellow-400 hover:bg-yellow-300 text-black font-display text-xl tracking-wider rounded flex items-center justify-center gap-2 disabled:opacity-40"
-        >
-          📷 RECORD
-        </button>
-        <button
-          onClick={() => !busy && inputRef.current?.click()}
-          disabled={busy}
-          className="py-4 bg-zinc-800 hover:bg-zinc-700 text-white font-display text-xl tracking-wider rounded flex items-center justify-center gap-2 disabled:opacity-40"
-        >
-          ↑ UPLOAD
-        </button>
-      </div>
-
       <input
         ref={inputRef}
         type="file"

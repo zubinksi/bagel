@@ -29,10 +29,10 @@ export default function BagelFeedCard({ bagel, isExpanded, onToggle, isOwner, is
 
   return (
     <div ref={cardRef} className="rounded-xl overflow-hidden border border-zinc-800">
-      {/* Header row — tap to expand/collapse */}
+      {/* Header row — tap to expand/collapse (only when chug exists) */}
       <button
-        onClick={onToggle}
-        className="w-full bg-[#111113] active:bg-zinc-800/80 transition-colors text-left"
+        onClick={hasChug ? onToggle : undefined}
+        className={`w-full bg-[#111113] transition-colors text-left ${hasChug ? "active:bg-zinc-800/80 cursor-pointer" : "cursor-default"}`}
       >
         <div className="flex items-stretch">
           {/* Team colour sidebar */}
@@ -69,45 +69,41 @@ export default function BagelFeedCard({ bagel, isExpanded, onToggle, isOwner, is
             </div>
           </div>
 
-          {/* Chevron */}
-          <div className="flex items-center pr-4 shrink-0">
-            <span
-              className={`text-zinc-500 text-lg leading-none transition-transform duration-200 inline-block ${isExpanded ? "rotate-180" : ""}`}
-            >
-              ▾
-            </span>
-          </div>
+          {/* Chevron — only shown when expandable */}
+          {hasChug && (
+            <div className="flex items-center pr-4 shrink-0">
+              <span
+                className={`text-zinc-500 text-lg leading-none transition-transform duration-200 inline-block ${isExpanded ? "rotate-180" : ""}`}
+              >
+                ▾
+              </span>
+            </div>
+          )}
         </div>
       </button>
 
-      {/* Expanded body */}
-      {isExpanded && (
+      {/* Expanded body — only rendered when there's a chug */}
+      {isExpanded && hasChug && (
         <div className="border-t border-zinc-800 bg-zinc-900/40 p-3 space-y-3">
-          {hasChug ? (
-            <>
-              <VideoPlayer
-                src={`/api/video/${bagel.id}`}
-                canReplace={isOwner}
+          <VideoPlayer
+            src={`/api/video/${bagel.id}`}
+            canReplace={isOwner}
+            bagelId={bagel.id}
+            week={bagel.week}
+            playerName={bagel.player_name}
+            playerPosition={(bagel as any).position}
+          />
+          {!isOwner && (
+            <div className="bg-[#111113] rounded-xl p-4 border border-zinc-800">
+              <NumberPad
                 bagelId={bagel.id}
-                week={bagel.week}
-                playerName={bagel.player_name}
-                playerPosition={(bagel as any).position}
+                currentRating={(bagel as any).my_rating ?? null}
+                avgRating={bagel.avg_rating ?? null}
+                ratingCount={bagel.rating_count ?? 0}
+                isOwner={isOwner}
+                isLoggedIn={isLoggedIn}
               />
-              <div className="bg-[#111113] rounded-xl p-4 border border-zinc-800">
-                <NumberPad
-                  bagelId={bagel.id}
-                  currentRating={(bagel as any).my_rating ?? null}
-                  avgRating={bagel.avg_rating ?? null}
-                  ratingCount={bagel.rating_count ?? 0}
-                  isOwner={isOwner}
-                  isLoggedIn={isLoggedIn}
-                />
-              </div>
-            </>
-          ) : isOwner ? (
-            <VideoUploadZone bagelId={bagel.id} existingVideoUrl={null} />
-          ) : (
-            <div className="py-8 text-center text-zinc-600 text-sm">No chug posted yet</div>
+            </div>
           )}
         </div>
       )}

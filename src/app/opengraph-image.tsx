@@ -13,23 +13,28 @@ export default function Image() {
           width: "100%",
           height: "100%",
           display: "flex",
+          flexDirection: "row",
           alignItems: "center",
           justifyContent: "center",
+          gap: 60,
         }}
       >
         <div
           style={{
-            width: 300,
-            height: 300,
+            width: 260,
+            height: 260,
             borderRadius: "50%",
-            border: "18px solid #FACC15",
+            border: "16px solid #FACC15",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
           }}
         >
-          <span style={{ fontSize: 180, color: "#FACC15", fontWeight: "bold", lineHeight: 1 }}>0</span>
+          <span style={{ fontSize: 160, color: "#FACC15", fontWeight: "bold", lineHeight: 1 }}>0</span>
         </div>
+        <span style={{ fontSize: 96, color: "white", fontWeight: "bold", letterSpacing: 8 }}>
+          BAGEL WATCH
+        </span>
       </div>
     ),
     { ...size },
